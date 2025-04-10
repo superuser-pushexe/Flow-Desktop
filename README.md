@@ -44,7 +44,20 @@ Or with X:
 On Debian/Ubuntu:
 `sudo apt-get install libx11-dev openbox xterm pcmanfm`
 
-On Fedora:
+On Fedora
+### Building from Source
+1. Clone this repository or download the source code:
+`git clone <repository-url>`
+`cd flow-desktop`
+
+2. Compile the code:
+`gcc -o flow-desktop flow-desktop.c -lX11`
+
+3. Run the desktop:
+`./flow-desktop`
+Or start it with X:
+`startx ./flow-desktop`
+:
 `sudo dnf install libX11-devel openbox xterm pcmanfm`
 
 ## Usage
