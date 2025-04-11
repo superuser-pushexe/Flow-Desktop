@@ -159,6 +159,8 @@ void setup_environment() {
 }
 
 int main(int argc, char *argv[]) {
+    system("nitrogen --restore");  // Set wallpaper using nitrogen
+
     setup_environment();
     
     display = XOpenDisplay(NULL);
