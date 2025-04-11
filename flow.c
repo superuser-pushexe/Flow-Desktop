@@ -1,7 +1,8 @@
-/* flow-desktop.c - Robust X11 desktop with Openbox with Nitrogen wallpaper support */
+/* flow-desktop.c - X11 desktop with cursor, wallpaper, and taskbar */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
+#include <X11/cursorfont.h>
 #include <X11/keysym.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -9,25 +10,41 @@
 #include <string.h>
 #include <time.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 // Configuration
-#define TASKBAR_HEIGHT 30
-#define LAUNCHER_SIZE 24
-#define LAUNCHER_PADDING 5
-#define CLOCK_WIDTH 100
+#define TASKBAR_HEIGHT 40
+#define LAUNCHER_SIZE 36
+#define LAUNCHER_PADDING 8
+#define CLOCK_WIDTH 120
+#define ICON_SIZE 24
 
 typedef struct {
     Window win;
     char *command;
-    char *label;
+    char *icon_name;
 } Launcher;
 
+// Global variables
 Display *display;
 Window root, taskbar_win;
 int screen;
 Launcher launchers[5];
 int launcher_count = 0;
-GC gc; // Global graphics context
+GC gc;
+pid_t nitrogen_pid = -1;
+
+// Function prototypes
+void x11_check(int status, const char *msg);
+void setup_cursor();
+void set_wallpaper();
+void draw_launcher(Launcher *launcher);
+void draw_clock();
+void add_launcher(const char *icon_name, const char *command);
+void create_taskbar();
+void handle_launcher_click(Window win);
+void event_loop();
+void cleanup();
 
 void x11_check(int status, const char *msg) {
     if (status == BadAlloc || status == BadWindow) {
@@ -36,97 +53,66 @@ void x11_check(int status, const char *msg) {
     }
 }
 
+void setup_cursor() {
+    Cursor cursor = XCreateFontCursor(display, XC_left_ptr);
+    XDefineCursor(display, root, cursor);
+    XFlush(display);
+}
+
 void set_wallpaper() {
-    pid_t pid = fork();
-    if (pid == 0) {
-        // Child process - try nitrogen with restore first
+    if (nitrogen_pid > 0) {
+        kill(nitrogen_pid, SIGTERM);
+        waitpid(nitrogen_pid, NULL, 0);
+    }
+
+    nitrogen_pid = fork();
+    if (nitrogen_pid == 0) {
         execlp("nitrogen", "nitrogen", "--restore", NULL);
-        
-        // If nitrogen fails, try feh as fallback
-        execlp("feh", "feh", "--bg-scale", "/usr/share/backgrounds/default.jpg", NULL);
-        
-        // If both fail, use xsetroot as last resort
-        execlp("xsetroot", "xsetroot", "-solid", "black", NULL);
+        execlp("feh", "feh", "--bg-fill", "/usr/share/backgrounds/default.jpg", NULL);
         exit(EXIT_FAILURE);
-    } else if (pid < 0) {
-        perror("Failed to fork for wallpaper setting");
+    } else if (nitrogen_pid < 0) {
+        perror("Failed to fork for wallpaper");
     }
 }
 
-void launch_openbox() {
-    if (fork() == 0) {
-        // First try with XDG config
-        char *home = getenv("HOME");
-        char config_path[256];
-        snprintf(config_path, sizeof(config_path), "%s/.config/openbox/autostart", home);
-        
-        if (access(config_path, F_OK) != -1) {
-            execlp("openbox", "openbox", "--config-file", config_path, "--sm-disable", NULL);
-        }
-        execlp("openbox", "openbox", "--sm-disable", NULL);
-        perror("Failed to start Openbox");
-        exit(EXIT_FAILURE);
-    }
-    sleep(1); // Wait for WM to initialize
-}
-
-void create_taskbar() {
-    XSetWindowAttributes attrs = {
-        .override_redirect = True,
-        .background_pixel = BlackPixel(display, screen),
-        .event_mask = ExposureMask | ButtonPressMask
-    };
+void draw_launcher(Launcher *launcher) {
+    XSetForeground(display, gc, 0x333333);
+    XFillRectangle(display, launcher->win, gc, 0, 0, LAUNCHER_SIZE, LAUNCHER_SIZE);
     
-    taskbar_win = XCreateWindow(display, root,
-        0, DisplayHeight(display, screen) - TASKBAR_HEIGHT,
-        DisplayWidth(display, screen), TASKBAR_HEIGHT,
-        0, CopyFromParent, InputOutput, CopyFromParent,
-        CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
-    
-    // Set window type as dock
-    Atom net_wm_window_type = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
-    Atom net_wm_window_type_dock = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DOCK", False);
-    XChangeProperty(display, taskbar_win, net_wm_window_type, XA_ATOM, 32,
-                  PropModeReplace, (unsigned char *)&net_wm_window_type_dock, 1);
-    
-    XMapWindow(display, taskbar_win);
+    XSetForeground(display, gc, WhitePixel(display, screen));
+    XDrawString(display, launcher->win, gc, 
+               LAUNCHER_SIZE/2 - 4, LAUNCHER_SIZE/2 + 4,
+               launcher->icon_name, 1);
 }
 
 void draw_clock() {
-    // Clear the area where the clock will be drawn
-    XClearArea(display, taskbar_win,
-               DisplayWidth(display, screen) - CLOCK_WIDTH, 0,
-               CLOCK_WIDTH, TASKBAR_HEIGHT, False);
-
-    // Get and format the current time
+    static time_t last_update = 0;
     time_t now = time(NULL);
+    
+    if (now == last_update) return;
+    last_update = now;
+    
+    XSetForeground(display, gc, 0x333333);
+    XFillRectangle(display, taskbar_win, gc, 
+                  DisplayWidth(display, screen) - CLOCK_WIDTH, 0,
+                  CLOCK_WIDTH, TASKBAR_HEIGHT);
+    
     char time_str[20];
-    strftime(time_str, sizeof(time_str), "%r", localtime(&now));
+    strftime(time_str, sizeof(time_str), "%H:%M:%S", localtime(&now));
     
-    // Draw the time string
-    XDrawString(display, taskbar_win, gc, 
-        DisplayWidth(display, screen) - CLOCK_WIDTH + 5, 
-        TASKBAR_HEIGHT / 2 + 5,
-        time_str, strlen(time_str));
-}
-
-void draw_taskbar() {
     XSetForeground(display, gc, WhitePixel(display, screen));
-    
-    // Draw launcher backgrounds
-    for (int i = 0; i < launcher_count; i++) {
-        XFillRectangle(display, launchers[i].win, gc, 0, 0, LAUNCHER_SIZE, LAUNCHER_SIZE);
-    }
-    
-    draw_clock();
+    XDrawString(display, taskbar_win, gc, 
+               DisplayWidth(display, screen) - CLOCK_WIDTH + 10,
+               TASKBAR_HEIGHT / 2 + 5,
+               time_str, strlen(time_str));
 }
 
-void add_launcher(const char *label, const char *command) {
+void add_launcher(const char *icon_name, const char *command) {
     if (launcher_count >= 5) return;
     
     XSetWindowAttributes attrs = {
-        .background_pixel = BlackPixel(display, screen),
-        .event_mask = ButtonPressMask
+        .background_pixel = 0x333333,
+        .event_mask = ButtonPressMask | ExposureMask
     };
     
     launchers[launcher_count].win = XCreateWindow(display, taskbar_win,
@@ -137,10 +123,33 @@ void add_launcher(const char *label, const char *command) {
         CWBackPixel | CWEventMask, &attrs);
     
     launchers[launcher_count].command = strdup(command);
-    launchers[launcher_count].label = strdup(label);
-    launcher_count++;
+    launchers[launcher_count].icon_name = strdup(icon_name);
     
-    XMapWindow(display, launchers[launcher_count-1].win);
+    XSelectInput(display, launchers[launcher_count].win, ExposureMask | ButtonPressMask);
+    XMapWindow(display, launchers[launcher_count].win);
+    draw_launcher(&launchers[launcher_count]);
+    launcher_count++;
+}
+
+void create_taskbar() {
+    XSetWindowAttributes attrs = {
+        .override_redirect = True,
+        .background_pixel = 0x222222,
+        .event_mask = ExposureMask
+    };
+    
+    taskbar_win = XCreateWindow(display, root,
+        0, DisplayHeight(display, screen) - TASKBAR_HEIGHT,
+        DisplayWidth(display, screen), TASKBAR_HEIGHT,
+        0, CopyFromParent, InputOutput, CopyFromParent,
+        CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
+    
+    Atom net_wm_window_type = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+    Atom net_wm_window_type_dock = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DOCK", False);
+    XChangeProperty(display, taskbar_win, net_wm_window_type, XA_ATOM, 32,
+                  PropModeReplace, (unsigned char *)&net_wm_window_type_dock, 1);
+    
+    XMapWindow(display, taskbar_win);
 }
 
 void handle_launcher_click(Window win) {
@@ -157,63 +166,57 @@ void handle_launcher_click(Window win) {
 }
 
 void event_loop() {
-    XEvent event;
+    XEvent ev;
     while (1) {
-        XNextEvent(display, &event);
-        
-        switch (event.type) {
-            case Expose:
-                if (event.xexpose.window == taskbar_win) {
-                    draw_taskbar();
-                }
-                break;
-                
-            case ButtonPress:
-                handle_launcher_click(event.xbutton.window);
-                break;
+        while (XPending(display)) {
+            XNextEvent(display, &ev);
+            switch (ev.type) {
+                case Expose:
+                    if (ev.xexpose.window == taskbar_win) {
+                        draw_clock();
+                    }
+                    break;
+                case ButtonPress:
+                    handle_launcher_click(ev.xbutton.window);
+                    break;
+            }
         }
+        draw_clock();
+        usleep(100000);
     }
 }
 
-void setup_environment() {
-    // Set fallback cursor
-    if (system("xsetroot -cursor_name left_ptr") == -1) {
-        perror("Failed to set cursor");
+void cleanup() {
+    if (nitrogen_pid > 0) {
+        kill(nitrogen_pid, SIGTERM);
+        waitpid(nitrogen_pid, NULL, 0);
     }
-    
-    // Ensure basic X resources
-    putenv("XMODIFIERS=");
-    putenv("QT_AUTO_SCREEN_SCALE_FACTOR=1");
+    XCloseDisplay(display);
 }
 
 int main(int argc, char *argv[]) {
-    // Set wallpaper first
     set_wallpaper();
     
-    // Initialize X11
     display = XOpenDisplay(NULL);
     if (!display) {
-        fprintf(stderr, "Failed to open display. Try: startx %s\n", argv[0]);
+        fprintf(stderr, "Failed to open display\n");
         return EXIT_FAILURE;
     }
+    
+    atexit(cleanup);
     
     screen = DefaultScreen(display);
     root = RootWindow(display, screen);
     
-    // Create GC for drawing
+    setup_cursor();
     gc = XCreateGC(display, root, 0, NULL);
     
-    setup_environment();
-    launch_openbox();
     create_taskbar();
-    
-    // Add default launchers
-    add_launcher("Term", "xterm");
-    add_launcher("Web", "xdg-open https://google.com");
-    add_launcher("Files", "pcmanfm");
+    add_launcher("T", "xterm");
+    add_launcher("W", "xdg-open https://google.com");
+    add_launcher("F", "pcmanfm");
     
     event_loop();
     
-    XCloseDisplay(display);
     return EXIT_SUCCESS;
 }
