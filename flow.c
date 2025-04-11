@@ -94,7 +94,7 @@ void add_launcher(const char *name, const char *command) {
 void draw_clock(GC gc) {
     time_t now = time(NULL);
     char time_str[20];
-    strftime(time_str, sizeof(time_str), "%I:%M %p", localtime(&now));
+    strftime(time_str, sizeof(time_str), "%r", localtime(&now));
     
     XDrawString(display, taskbar_win, gc, 
         DisplayWidth(display, screen) - CLOCK_WIDTH, 
