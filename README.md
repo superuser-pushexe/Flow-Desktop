@@ -57,6 +57,5 @@ Contributions are welcome! Feel free to submit issues or pull requests to improv
 
 This project is licensed under the [GNU General Public License v3.0](LICENSE).
 
----
 
 For more information and updates, visit the [Flow Desktop GitHub repository](https://github.com/superuser-pushexe/Flow-Desktop).
