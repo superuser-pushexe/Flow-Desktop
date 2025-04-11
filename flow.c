@@ -73,22 +73,23 @@ void create_taskbar() {
     XMapWindow(display, taskbar_win);
 }
 
-void add_launcher(const char *name, const char *command) {
-    if (launcher_count >= 5) return;
+void draw_clock(GC gc) {
+    // Clear the area where the clock will be drawn
+    XClearArea(display, taskbar_win,
+               DisplayWidth(display, screen) - CLOCK_WIDTH, 0,
+               CLOCK_WIDTH, TASKBAR_HEIGHT, False);
+
+    // Get and format the current time
+    time_t now = time(NULL);
+    char time_str[20];
+    strftime(time_str, sizeof(time_str), "%r", localtime(&now));
     
-    int x_pos = LAUNCHER_PADDING + (launcher_count * (LAUNCHER_SIZE + LAUNCHER_PADDING));
+    // Draw the time string
+    XDrawString(display, taskbar_win, gc, 
+        DisplayWidth(display, screen) - CLOCK_WIDTH + 5, 
+        TASKBAR_HEIGHT / 2 + 5,
+        time_str, strlen(time_str));
     
-    launchers[launcher_count].win = XCreateSimpleWindow(display, taskbar_win,
-        x_pos, (TASKBAR_HEIGHT - LAUNCHER_SIZE)/2,
-        LAUNCHER_SIZE, LAUNCHER_SIZE, 0,
-        WhitePixel(display, screen), BlackPixel(display, screen));
-    
-    XSelectInput(display, launchers[launcher_count].win, ExposureMask | ButtonPressMask);
-    XStoreName(display, launchers[launcher_count].win, name);
-    XMapWindow(display, launchers[launcher_count].win);
-    
-    launchers[launcher_count].command = strdup(command);
-    launcher_count++;
 }
 
 void draw_clock(GC gc) {
@@ -162,7 +163,12 @@ int main(int argc, char *argv[]) {
     system("nitrogen --restore");  // Set wallpaper using nitrogen
 
     setup_environment();
-    
+    while (1) {
+    draw_clock(gc);         // update the clock
+    XFlush(display);        // flush changes to the screen
+    sleep(1);               // wait one second
+    }
+
     display = XOpenDisplay(NULL);
     if (!display) {
         fprintf(stderr, "Failed to open display. Try: startx %s\n", argv[0]);
