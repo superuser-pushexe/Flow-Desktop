@@ -1,4 +1,4 @@
-/* flow-desktop.c - Robust X11 desktop with Openbox */
+/* flow-desktop.c - Robust X11 desktop with Openbox with Nitrogen wallpaper support */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
@@ -19,6 +19,7 @@
 typedef struct {
     Window win;
     char *command;
+    char *label;
 } Launcher;
 
 Display *display;
@@ -26,11 +27,29 @@ Window root, taskbar_win;
 int screen;
 Launcher launchers[5];
 int launcher_count = 0;
+GC gc; // Global graphics context
 
 void x11_check(int status, const char *msg) {
     if (status == BadAlloc || status == BadWindow) {
         fprintf(stderr, "X11 Error: %s\n", msg);
         exit(EXIT_FAILURE);
+    }
+}
+
+void set_wallpaper() {
+    pid_t pid = fork();
+    if (pid == 0) {
+        // Child process - try nitrogen with restore first
+        execlp("nitrogen", "nitrogen", "--restore", NULL);
+        
+        // If nitrogen fails, try feh as fallback
+        execlp("feh", "feh", "--bg-scale", "/usr/share/backgrounds/default.jpg", NULL);
+        
+        // If both fail, use xsetroot as last resort
+        execlp("xsetroot", "xsetroot", "-solid", "black", NULL);
+        exit(EXIT_FAILURE);
+    } else if (pid < 0) {
+        perror("Failed to fork for wallpaper setting");
     }
 }
 
@@ -73,7 +92,7 @@ void create_taskbar() {
     XMapWindow(display, taskbar_win);
 }
 
-void draw_clock(GC gc) {
+void draw_clock() {
     // Clear the area where the clock will be drawn
     XClearArea(display, taskbar_win,
                DisplayWidth(display, screen) - CLOCK_WIDTH, 0,
@@ -89,22 +108,9 @@ void draw_clock(GC gc) {
         DisplayWidth(display, screen) - CLOCK_WIDTH + 5, 
         TASKBAR_HEIGHT / 2 + 5,
         time_str, strlen(time_str));
-    
-}
-
-void draw_clock(GC gc) {
-    time_t now = time(NULL);
-    char time_str[20];
-    strftime(time_str, sizeof(time_str), "%r", localtime(&now));
-    
-    XDrawString(display, taskbar_win, gc, 
-        DisplayWidth(display, screen) - CLOCK_WIDTH, 
-        TASKBAR_HEIGHT/2 + 5,
-        time_str, strlen(time_str));
 }
 
 void draw_taskbar() {
-    GC gc = XCreateGC(display, taskbar_win, 0, NULL);
     XSetForeground(display, gc, WhitePixel(display, screen));
     
     // Draw launcher backgrounds
@@ -112,8 +118,29 @@ void draw_taskbar() {
         XFillRectangle(display, launchers[i].win, gc, 0, 0, LAUNCHER_SIZE, LAUNCHER_SIZE);
     }
     
-    draw_clock(gc);
-    XFreeGC(display, gc);
+    draw_clock();
+}
+
+void add_launcher(const char *label, const char *command) {
+    if (launcher_count >= 5) return;
+    
+    XSetWindowAttributes attrs = {
+        .background_pixel = BlackPixel(display, screen),
+        .event_mask = ButtonPressMask
+    };
+    
+    launchers[launcher_count].win = XCreateWindow(display, taskbar_win,
+        LAUNCHER_PADDING + (LAUNCHER_SIZE + LAUNCHER_PADDING) * launcher_count,
+        (TASKBAR_HEIGHT - LAUNCHER_SIZE) / 2,
+        LAUNCHER_SIZE, LAUNCHER_SIZE,
+        0, CopyFromParent, InputOutput, CopyFromParent,
+        CWBackPixel | CWEventMask, &attrs);
+    
+    launchers[launcher_count].command = strdup(command);
+    launchers[launcher_count].label = strdup(label);
+    launcher_count++;
+    
+    XMapWindow(display, launchers[launcher_count-1].win);
 }
 
 void handle_launcher_click(Window win) {
@@ -160,15 +187,10 @@ void setup_environment() {
 }
 
 int main(int argc, char *argv[]) {
-    system("nitrogen --restore");  // Set wallpaper using nitrogen
-
-    setup_environment();
-    while (1) {
-    draw_clock(gc);         // update the clock
-    XFlush(display);        // flush changes to the screen
-    sleep(1);               // wait one second
-    }
-
+    // Set wallpaper first
+    set_wallpaper();
+    
+    // Initialize X11
     display = XOpenDisplay(NULL);
     if (!display) {
         fprintf(stderr, "Failed to open display. Try: startx %s\n", argv[0]);
@@ -178,6 +200,10 @@ int main(int argc, char *argv[]) {
     screen = DefaultScreen(display);
     root = RootWindow(display, screen);
     
+    // Create GC for drawing
+    gc = XCreateGC(display, root, 0, NULL);
+    
+    setup_environment();
     launch_openbox();
     create_taskbar();
     
