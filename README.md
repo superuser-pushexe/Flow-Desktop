@@ -31,7 +31,7 @@
 
 2. **Compile the Source Code**:
    ```bash
-   gcc flow.c -o flow-desktop -lX11
+   gcc flow.c -o flow-desktop -lX11 -lXext
    ```
 
 3. **Run Flow Desktop**:
