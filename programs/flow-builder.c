@@ -3,7 +3,39 @@
 #include <vte/vte.h>
 #include <stdlib.h>
 
+#define REPO_URL "https://github.com/superuser-pushexe/Flow-Desktop.git"
+#define PROGRAM_DIR "./flow_programs"
+
 GtkWidget *window, *notebook, *terminal;
+
+void setup_flow_desktop() {
+    printf("Checking for Flow Desktop programs...\n");
+
+    // Clone the repository if it doesn't exist
+    if (system("test -d " PROGRAM_DIR) != 0) {
+        printf("Downloading Flow Desktop programs...\n");
+        
+        if (system("git --version > /dev/null 2>&1") == 0) {
+            system("git clone " REPO_URL " " PROGRAM_DIR);
+        } else {
+            printf("Git is not installed. Installing...\n");
+            system("sudo apt install git -y");
+            system("git clone " REPO_URL " " PROGRAM_DIR);
+        }
+        
+        // Set permissions and run setup script (if available)
+        system("cd " PROGRAM_DIR "/programs && chmod +x setup.sh");
+        if (system("test -f " PROGRAM_DIR "/programs/setup.sh") == 0) {
+            system(PROGRAM_DIR "/programs/setup.sh");
+        } else {
+            printf("No setup script found. Dependencies may need manual installation.\n");
+        }
+
+        printf("Flow Desktop programs setup complete!\n");
+    } else {
+        printf("Flow Desktop programs already installed.\n");
+    }
+}
 
 void create_editor_tab(const char *title) {
     GtkWidget *scrolled_win = gtk_scrolled_window_new(NULL, NULL);
@@ -48,9 +80,10 @@ int main(int argc, char *argv[]) {
     gtk_window_set_default_size(GTK_WINDOW(window), 800, 600);
     
     g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
-    
+
+    setup_flow_desktop();  // Automatically download & setup Flow Desktop programs
     setup_ui(window);
-    
+
     gtk_main();
     return 0;
 }
