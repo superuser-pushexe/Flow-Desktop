@@ -1,36 +1,25 @@
-/* Modified Flow Desktop - KDE Plasma Style */
-
-/*
- * Changes:
- * - Replaced app menu with a real launcher parsing .desktop files.
- * - Added settings menu window and taskbar button.
- * - Replaced Xft with basic bitmap font rendering using XDrawImageString.
- * - Improved notification structure.
- * - Added Meta key toggle for app menu using XGrabKey.
- */
-
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-#include <X11/Xatom.h>
 #include <X11/keysym.h>
-#include <dirent.h>
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
+#include <unistd.h>
 
 #define APP_MENU_WIDTH 300
 #define APP_MENU_HEIGHT 400
 #define SETTINGS_WIDTH 300
 #define SETTINGS_HEIGHT 200
+#define VOLUME_WIN_WIDTH 200
+#define VOLUME_WIN_HEIGHT 100
 
 extern Display *display;
 extern Window root;
 extern int screen;
 extern Window taskbar_win, app_menu_button, notification_button, logout_button, clock_win, app_menu_win;
 extern GC gc;
-
-Window settings_button, settings_win;
+extern Window settings_button, settings_win, volume_button, volume_win;
 
 void draw_text(Window win, int x, int y, const char* text, unsigned long color) {
     XSetForeground(display, gc, color);
@@ -85,9 +74,30 @@ void show_notifications(void) {
     draw_text(notif_win, 10, 20, "New Notification", 0xFFFFFF);
 }
 
-void grab_meta_key(void) {
-    KeyCode meta = XKeysymToKeycode(display, XK_Super_L);
-    XGrabKey(display, meta, AnyModifier, root, True, GrabModeAsync, GrabModeAsync);
+void show_volume(void) {
+    if (volume_win) {
+        XMapRaised(display, volume_win);
+        return;
+    }
+    volume_win = XCreateSimpleWindow(display, root, 200, 100, VOLUME_WIN_WIDTH, VOLUME_WIN_HEIGHT, 2,
+                                     BlackPixel(display, screen), 0x333333);
+    XSelectInput(display, volume_win, ExposureMask | ButtonPressMask);
+    XMapWindow(display, volume_win);
+    draw_text(volume_win, 10, 20, "Volume Control (placeholder)", 0xFFFFFF);
+}
+
+void change_volume(const char *cmd) {
+    if (fork() == 0) {
+        execl("/bin/sh", "sh", "-c", cmd, NULL);
+        exit(1);
+    }
+}
+
+void grab_keys() {
+    XGrabKey(display, XKeysymToKeycode(display, XK_Super_L), AnyModifier, root, True, GrabModeAsync, GrabModeAsync);
+    XGrabKey(display, XKeysymToKeycode(display, 0x1008FF11), AnyModifier, root, True, GrabModeAsync, GrabModeAsync); // Vol Down
+    XGrabKey(display, XKeysymToKeycode(display, 0x1008FF13), AnyModifier, root, True, GrabModeAsync, GrabModeAsync); // Vol Up
+    XGrabKey(display, XKeysymToKeycode(display, 0x1008FF12), AnyModifier, root, True, GrabModeAsync, GrabModeAsync); // Mute
 }
 
 void event_loop(void) {
@@ -98,6 +108,12 @@ void event_loop(void) {
             if (ev.type == KeyPress) {
                 if (ev.xkey.keycode == XKeysymToKeycode(display, XK_Super_L)) {
                     show_app_menu();
+                } else if (ev.xkey.keycode == XKeysymToKeycode(display, 0x1008FF11)) {
+                    change_volume("pactl set-sink-volume @DEFAULT_SINK@ -5%");
+                } else if (ev.xkey.keycode == XKeysymToKeycode(display, 0x1008FF13)) {
+                    change_volume("pactl set-sink-volume @DEFAULT_SINK@ +5%");
+                } else if (ev.xkey.keycode == XKeysymToKeycode(display, 0x1008FF12)) {
+                    change_volume("pactl set-sink-mute @DEFAULT_SINK@ toggle");
                 }
             }
             if (ev.type == ButtonPress) {
@@ -105,6 +121,7 @@ void event_loop(void) {
                 else if (ev.xbutton.window == notification_button) show_notifications();
                 else if (ev.xbutton.window == logout_button) lightdm_logout();
                 else if (ev.xbutton.window == settings_button) show_settings();
+                else if (ev.xbutton.window == volume_button) show_volume();
             }
             if (ev.type == Expose) {
                 if (ev.xexpose.window == app_menu_button)
@@ -169,17 +186,27 @@ void create_taskbar(void) {
                                           0, BlackPixel(display, screen), 0x555555);
     XSelectInput(display, settings_button, ButtonPressMask | ExposureMask);
     XMapWindow(display, settings_button);
+
+    volume_button = XCreateSimpleWindow(display, taskbar_win, 370, 5, 80, 30,
+                                        0, BlackPixel(display, screen), 0x555555);
+    XSelectInput(display, volume_button, ButtonPressMask | ExposureMask);
+    XMapWindow(display, volume_button);
 }
 
 int main(void) {
     display = XOpenDisplay(NULL);
+    if (display == NULL) {
+        fprintf(stderr, "Unable to open X display\n");
+        exit(1);
+    }
+
     screen = DefaultScreen(display);
-    root = RootWindow(display, screen);
-    setup_cursor();
-    set_wallpaper();
+    root = DefaultRootWindow(display);
+
     create_taskbar();
-    grab_meta_key();
+    grab_keys();
     event_loop();
-    cleanup();
+
+    XCloseDisplay(display);
     return 0;
 }
