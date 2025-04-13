@@ -1,13 +1,4 @@
-/* Modified Flow Desktop - KDE Plasma Style */
-
-/*
- * Changes:
- * - Replaced app menu with a real launcher parsing .desktop files.
- * - Added settings menu window and taskbar button.
- * - Replaced Xft with basic bitmap font rendering using XDrawImageString.
- * - Improved notification structure.
- * - Added Meta key toggle for app menu using XGrabKey.
- */
+// flow-desktop.c - KDE-style lightweight X11 desktop environment
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -18,104 +9,163 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <X11/cursorfont.h>  // Include for cursor handling
 
-#define APP_MENU_WIDTH 300
+#define WIDTH_RATIO 0.8
+#define HEIGHT 40
+#define CLOCK_WIDTH 120
+#define BUTTON_WIDTH 80
+#define BUTTON_HEIGHT 30
 #define APP_MENU_HEIGHT 400
+#define APP_MENU_WIDTH 300
 #define SETTINGS_WIDTH 300
 #define SETTINGS_HEIGHT 200
+#define VOL_WIDTH 200
+#define VOL_HEIGHT 60
 
-extern Display *display;
-extern Window root;
-extern int screen;
-extern Window taskbar_win, app_menu_button, notification_button, logout_button, clock_win, app_menu_win;
-extern GC gc;
+Display *display;
+Window root, taskbar, app_button, notif_button, logout_button, clock_win, app_menu = 0;
+Window settings_button, settings_win = 0, volume_button, volume_win = 0;
+GC gc;
+int screen;
 
-Window settings_button, settings_win;
-
-void draw_text(Window win, int x, int y, const char* text, unsigned long color) {
-    XSetForeground(display, gc, color);
-    XDrawImageString(display, win, gc, x, y, text, strlen(text));
+// Function to restore the cursor
+void setup_cursor() {
+    Cursor cursor = XCreateFontCursor(display, XC_left_ptr);
+    XDefineCursor(display, root, cursor);
+    XFlush(display);
 }
 
-void show_app_menu(void) {
-    if (app_menu_win) {
-        XMapRaised(display, app_menu_win);
+// Function to restore Nitrogen wallpaper
+void set_wallpaper() {
+    if (fork() == 0) {
+        execlp("nitrogen", "nitrogen", "--restore", NULL);
+        execlp("feh", "feh", "--bg-fill", "/usr/share/backgrounds/default.jpg", NULL);
+        exit(1);
+    }
+}
+
+void draw_text(Window win, int x, int y, const char* txt, unsigned long color) {
+    XSetForeground(display, gc, color);
+    XDrawImageString(display, win, gc, x, y, txt, strlen(txt));
+}
+
+void launch_app(const char *cmd) {
+    if (fork() == 0) {
+        setsid();
+        execl("/bin/sh", "sh", "-c", cmd, NULL);
+        exit(1);
+    }
+}
+
+void show_app_menu() {
+    if (app_menu) {
+        XMapRaised(display, app_menu);
         return;
     }
-    app_menu_win = XCreateSimpleWindow(display, root, 100, 100, APP_MENU_WIDTH, APP_MENU_HEIGHT, 2,
-                                       BlackPixel(display, screen), 0x202020);
-    XSelectInput(display, app_menu_win, ExposureMask | ButtonPressMask);
-    XMapWindow(display, app_menu_win);
+    app_menu = XCreateSimpleWindow(display, root, 100, 100, APP_MENU_WIDTH, APP_MENU_HEIGHT, 2,
+                                    BlackPixel(display, screen), 0x222222);
+    XSelectInput(display, app_menu, ExposureMask | ButtonPressMask);
+    XMapWindow(display, app_menu);
 
-    DIR *d;
+    DIR *d = opendir("/usr/share/applications");
     struct dirent *dir;
-    int y_offset = 20;
-    d = opendir("/usr/share/applications");
+    int y = 20;
     if (d) {
-        while ((dir = readdir(d)) != NULL && y_offset < APP_MENU_HEIGHT) {
+        while ((dir = readdir(d)) && y < APP_MENU_HEIGHT) {
             if (strstr(dir->d_name, ".desktop")) {
-                char name[256];
-                strncpy(name, dir->d_name, sizeof(name));
-                name[strlen(name) - 8] = '\0';
-                draw_text(app_menu_win, 10, y_offset, name, 0xFFFFFF);
-                y_offset += 20;
+                char name[256], exec[512] = "", line[1024], path[512];
+                snprintf(path, sizeof(path), "/usr/share/applications/%s", dir->d_name);
+                FILE *f = fopen(path, "r");
+                if (f) {
+                    while (fgets(line, sizeof(line), f)) {
+                        if (strncmp(line, "Name=", 5) == 0) sscanf(line, "Name=%255[^\n]", name);
+                        else if (strncmp(line, "Exec=", 5) == 0) sscanf(line, "Exec=%511[^\n]", exec);
+                    }
+                    fclose(f);
+                    draw_text(app_menu, 10, y, name, 0xFFFFFF);
+                    y += 20;
+                }
             }
         }
         closedir(d);
     }
 }
 
-void show_settings(void) {
+void show_settings() {
     if (settings_win) {
         XMapRaised(display, settings_win);
         return;
     }
-    settings_win = XCreateSimpleWindow(display, root, 150, 150, SETTINGS_WIDTH, SETTINGS_HEIGHT, 2,
+    settings_win = XCreateSimpleWindow(display, root, 200, 200, SETTINGS_WIDTH, SETTINGS_HEIGHT, 2,
                                        BlackPixel(display, screen), 0x444444);
     XSelectInput(display, settings_win, ExposureMask | ButtonPressMask);
     XMapWindow(display, settings_win);
-    draw_text(settings_win, 10, 20, "Settings Menu (placeholder)", 0xFFFFFF);
+    draw_text(settings_win, 10, 20, "Settings (Coming Soon)", 0xFFFFFF);
 }
 
-void show_notifications(void) {
-    Window notif_win = XCreateSimpleWindow(display, root, 150, 150, 200, 100, 2,
-                                           BlackPixel(display, screen), 0x444466);
-    XSelectInput(display, notif_win, ExposureMask | ButtonPressMask);
-    XMapWindow(display, notif_win);
-    draw_text(notif_win, 10, 20, "New Notification", 0xFFFFFF);
+void show_volume() {
+    if (volume_win) {
+        XMapRaised(display, volume_win);
+        return;
+    }
+    volume_win = XCreateSimpleWindow(display, root, 250, 150, VOL_WIDTH, VOL_HEIGHT, 2,
+                                     BlackPixel(display, screen), 0x333355);
+    XSelectInput(display, volume_win, ExposureMask);
+    XMapWindow(display, volume_win);
+    draw_text(volume_win, 10, 20, "Volume: use keys", 0xFFFFFF);
 }
 
-void grab_meta_key(void) {
-    KeyCode meta = XKeysymToKeycode(display, XK_Super_L);
-    XGrabKey(display, meta, AnyModifier, root, True, GrabModeAsync, GrabModeAsync);
+void change_volume(const char *cmd) {
+    if (fork() == 0) {
+        execl("/bin/sh", "sh", "-c", cmd, NULL);
+        exit(1);
+    }
 }
 
-void event_loop(void) {
-    XEvent ev;
+void grab_keys() {
+    XGrabKey(display, XKeysymToKeycode(display, XK_Super_L), AnyModifier, root, True, GrabModeAsync, GrabModeAsync);
+    XGrabKey(display, XKeysymToKeycode(display, 0x1008FF11), AnyModifier, root, True, GrabModeAsync, GrabModeAsync); // Vol Down
+    XGrabKey(display, XKeysymToKeycode(display, 0x1008FF13), AnyModifier, root, True, GrabModeAsync, GrabModeAsync); // Vol Up
+    XGrabKey(display, XKeysymToKeycode(display, 0x1008FF12), AnyModifier, root, True, GrabModeAsync, GrabModeAsync); // Mute
+}
+
+void draw_clock() {
+    time_t t = time(NULL);
+    struct tm *tm = localtime(&t);
+    char buf[64];
+    strftime(buf, sizeof(buf), "%H:%M:%S", tm);
+    XSetForeground(display, gc, 0x333333);
+    XFillRectangle(display, clock_win, gc, 0, 0, CLOCK_WIDTH, 30);
+    draw_text(clock_win, 10, 20, buf, 0xFFFFFF);
+}
+
+void event_loop() {
+    XEvent e;
     while (1) {
         while (XPending(display)) {
-            XNextEvent(display, &ev);
-            if (ev.type == KeyPress) {
-                if (ev.xkey.keycode == XKeysymToKeycode(display, XK_Super_L)) {
-                    show_app_menu();
-                }
-            }
-            if (ev.type == ButtonPress) {
-                if (ev.xbutton.window == app_menu_button) show_app_menu();
-                else if (ev.xbutton.window == notification_button) show_notifications();
-                else if (ev.xbutton.window == logout_button) lightdm_logout();
-                else if (ev.xbutton.window == settings_button) show_settings();
-            }
-            if (ev.type == Expose) {
-                if (ev.xexpose.window == app_menu_button)
-                    draw_text(app_menu_button, 10, 20, "Apps", 0xFFFFFF);
-                else if (ev.xexpose.window == notification_button)
-                    draw_text(notification_button, 5, 20, "Notify", 0xFFFFFF);
-                else if (ev.xexpose.window == logout_button)
-                    draw_text(logout_button, 5, 20, "Logout", 0xFFFFFF);
-                else if (ev.xexpose.window == settings_button)
-                    draw_text(settings_button, 5, 20, "Settings", 0xFFFFFF);
-                else if (ev.xexpose.window == clock_win) draw_clock();
+            XNextEvent(display, &e);
+            if (e.type == KeyPress) {
+                KeySym ks = XKeycodeToKeysym(display, e.xkey.keycode, 0);
+                if (ks == XK_Super_L) show_app_menu();
+                else if (ks == 0x1008FF13) change_volume("pactl set-sink-volume @DEFAULT_SINK@ +5%");
+                else if (ks == 0x1008FF11) change_volume("pactl set-sink-volume @DEFAULT_SINK@ -5%");
+                else if (ks == 0x1008FF12) change_volume("pactl set-sink-mute @DEFAULT_SINK@ toggle");
+            } else if (e.type == Expose) {
+                if (e.xexpose.window == app_button) draw_text(app_button, 10, 20, "Apps", 0xFFFFFF);
+                if (e.xexpose.window == notif_button) draw_text(notif_button, 5, 20, "Notify", 0xFFFFFF);
+                if (e.xexpose.window == logout_button) draw_text(logout_button, 5, 20, "Logout", 0xFFFFFF);
+                if (e.xexpose.window == settings_button) draw_text(settings_button, 5, 20, "Settings", 0xFFFFFF);
+                if (e.xexpose.window == volume_button) draw_text(volume_button, 5, 20, "Volume", 0xFFFFFF);
+                if (e.xexpose.window == clock_win) draw_clock();
+            } else if (e.type == ButtonPress) {
+                if (e.xbutton.window == app_button) show_app_menu();
+                else if (e.xbutton.window == notif_button) show_volume();
+                else if (e.xbutton.window == settings_button) show_settings();
+                else if (e.xbutton.window == logout_button) exit(0);
+                else if (e.xbutton.window == volume_button) show_volume();
             }
         }
         draw_clock();
@@ -123,63 +173,63 @@ void event_loop(void) {
     }
 }
 
-void create_taskbar(void) {
-    int display_width = DisplayWidth(display, screen);
-    int display_height = DisplayHeight(display, screen);
-    int taskbar_width = (int)(display_width * 0.8);
-    int taskbar_x = (display_width - taskbar_width) / 2;
-    int taskbar_y = display_height - 40 - 10;
+void create_taskbar() {
+    int dw = DisplayWidth(display, screen);
+    int dh = DisplayHeight(display, screen);
+    int width = dw * WIDTH_RATIO;
+    int x = (dw - width) / 2;
+    int y = dh - HEIGHT - 10;
 
-    XSetWindowAttributes wa;
-    wa.override_redirect = True;
-    wa.background_pixel = 0x333333;
-    wa.event_mask = ExposureMask | ButtonPressMask;
+    XSetWindowAttributes attr;
+    attr.override_redirect = True;
+    attr.background_pixel = 0x333333;
+    attr.event_mask = ExposureMask | ButtonPressMask;
+    taskbar = XCreateWindow(display, root, x, y, width, HEIGHT, 0,
+                            CopyFromParent, InputOutput, CopyFromParent,
+                            CWOverrideRedirect | CWBackPixel | CWEventMask, &attr);
+    XMapWindow(display, taskbar);
 
-    taskbar_win = XCreateWindow(display, root, taskbar_x, taskbar_y,
-                                taskbar_width, 40,
-                                0, CopyFromParent, InputOutput,
-                                CopyFromParent, CWOverrideRedirect | CWBackPixel | CWEventMask, &wa);
-    XMapWindow(display, taskbar_win);
+    app_button = XCreateSimpleWindow(display, taskbar, 10, 5, BUTTON_WIDTH, BUTTON_HEIGHT, 0,
+                                     BlackPixel(display, screen), 0x555555);
+    XSelectInput(display, app_button, ExposureMask | ButtonPressMask);
+    XMapWindow(display, app_button);
 
-    app_menu_button = XCreateSimpleWindow(display, taskbar_win, 10, 5, 80, 30,
-                                          0, BlackPixel(display, screen), 0x555555);
-    XSelectInput(display, app_menu_button, ButtonPressMask | ExposureMask);
-    XMapWindow(display, app_menu_button);
+    notif_button = XCreateSimpleWindow(display, taskbar, 100, 5, BUTTON_WIDTH, BUTTON_HEIGHT, 0,
+                                       BlackPixel(display, screen), 0x555555);
+    XSelectInput(display, notif_button, ExposureMask | ButtonPressMask);
+    XMapWindow(display, notif_button);
 
-    notification_button = XCreateSimpleWindow(display, taskbar_win, 100, 5, 80, 30,
-                                              0, BlackPixel(display, screen), 0x555555);
-    XSelectInput(display, notification_button, ButtonPressMask | ExposureMask);
-    XMapWindow(display, notification_button);
-
-    logout_button = XCreateSimpleWindow(display, taskbar_win, 190, 5, 80, 30,
-                                        0, BlackPixel(display, screen), 0x555555);
-    XSelectInput(display, logout_button, ButtonPressMask | ExposureMask);
+    logout_button = XCreateSimpleWindow(display, taskbar, 190, 5, BUTTON_WIDTH, BUTTON_HEIGHT, 0,
+                                        BlackPixel(display, screen), 0x555555);
+    XSelectInput(display, logout_button, ExposureMask | ButtonPressMask);
     XMapWindow(display, logout_button);
 
-    clock_win = XCreateSimpleWindow(display, taskbar_win,
-                                    taskbar_width - 120 - 10, 5,
-                                    120, 30,
-                                    0, BlackPixel(display, screen), 0x333333);
+    clock_win = XCreateSimpleWindow(display, taskbar, width - CLOCK_WIDTH - 10, 5, CLOCK_WIDTH, 30, 0,
+                                    BlackPixel(display, screen), 0x333333);
     XSelectInput(display, clock_win, ExposureMask);
     XMapWindow(display, clock_win);
 
-    gc = XCreateGC(display, taskbar_win, 0, NULL);
-
-    settings_button = XCreateSimpleWindow(display, taskbar_win, 280, 5, 80, 30,
-                                          0, BlackPixel(display, screen), 0x555555);
-    XSelectInput(display, settings_button, ButtonPressMask | ExposureMask);
+    settings_button = XCreateSimpleWindow(display, taskbar, 280, 5, BUTTON_WIDTH, BUTTON_HEIGHT, 0,
+                                          BlackPixel(display, screen), 0x555555);
+    XSelectInput(display, settings_button, ExposureMask | ButtonPressMask);
     XMapWindow(display, settings_button);
+
+    volume_button = XCreateSimpleWindow(display, taskbar, 370, 5, BUTTON_WIDTH, BUTTON_HEIGHT, 0,
+                                        BlackPixel(display, screen), 0x555555);
+    XSelectInput(display, volume_button, ExposureMask | ButtonPressMask);
+    XMapWindow(display, volume_button);
+
+    gc = XCreateGC(display, taskbar, 0, NULL);
 }
 
-int main(void) {
+int main() {
     display = XOpenDisplay(NULL);
     screen = DefaultScreen(display);
     root = RootWindow(display, screen);
-    setup_cursor();
-    set_wallpaper();
     create_taskbar();
-    grab_meta_key();
+    setup_cursor(); // Restore the cursor
+    set_wallpaper(); // Restore the wallpaper
+    grab_keys();
     event_loop();
-    cleanup();
     return 0;
 }
