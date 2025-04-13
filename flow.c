@@ -1,3 +1,4 @@
+
 // flow-desktop.c - KDE-style lightweight X11 desktop environment
 
 #include <X11/Xlib.h>
@@ -64,8 +65,10 @@ void show_app_menu() {
                 FILE *f = fopen(path, "r");
                 if (f) {
                     while (fgets(line, sizeof(line), f)) {
-                        if (strncmp(line, "Name=", 5) == 0) sscanf(line, "Name=%255[^\n]", name);
-                        else if (strncmp(line, "Exec=", 5) == 0) sscanf(line, "Exec=%511[^\n]", exec);
+                        if (strncmp(line, "Name=", 5) == 0) sscanf(line, "Name=%255[^
+]", name);
+                        else if (strncmp(line, "Exec=", 5) == 0) sscanf(line, "Exec=%511[^
+]", exec);
                     }
                     fclose(f);
                     draw_text(app_menu, 10, y, name, 0xFFFFFF);
