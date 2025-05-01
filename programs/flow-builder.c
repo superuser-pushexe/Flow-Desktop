@@ -1,89 +1,86 @@
+// flow-builder.c - GTK4-based IDE for Flow Desktop
+
 #include <gtk/gtk.h>
-#include <gtksourceview/gtksourceview.h>
+#include <gtksourceview/gtksource.h>
 #include <vte/vte.h>
-#include <stdlib.h>
+#include <unistd.h>
+#include <git2.h>
 
 #define REPO_URL "https://github.com/superuser-pushexe/Flow-Desktop.git"
 #define PROGRAM_DIR "./flow_programs"
 
-GtkWidget *window, *notebook, *terminal;
+static void clone_repo(const char *url, const char *path) {
+    git_repository *repo = NULL;
+    git_clone_options opts = GIT_CLONE_OPTIONS_INIT;
+    if (git_clone(&repo, url, path, &opts) == 0 && repo) {
+        git_repository_free(repo);
+    } else {
+        fprintf(stderr, "Failed to clone repository\n");
+    }
+}
 
-void setup_flow_desktop() {
-    printf("Checking for Flow Desktop programs...\n");
-
-    // Clone the repository if it doesn't exist
-    if (system("test -d " PROGRAM_DIR) != 0) {
+static void setup_flow_desktop() {
+    if (access(PROGRAM_DIR, F_OK) != 0) {
         printf("Downloading Flow Desktop programs...\n");
-        
-        if (system("git --version > /dev/null 2>&1") == 0) {
-            system("git clone " REPO_URL " " PROGRAM_DIR);
-        } else {
-            printf("Git is not installed. Installing...\n");
-            system("sudo apt install git -y");
-            system("git clone " REPO_URL " " PROGRAM_DIR);
-        }
-        
-        // Set permissions and run setup script (if available)
-        system("cd " PROGRAM_DIR "/programs && chmod +x setup.sh");
-        if (system("test -f " PROGRAM_DIR "/programs/setup.sh") == 0) {
-            system(PROGRAM_DIR "/programs/setup.sh");
-        } else {
-            printf("No setup script found. Dependencies may need manual installation.\n");
-        }
+        git_libgit2_init();
+        clone_repo(REPO_URL, PROGRAM_DIR);
+        git_libgit2_shutdown();
 
+        char setup_cmd[512];
+        snprintf(setup_cmd, sizeof(setup_cmd), "cd %s/programs && chmod +x setup.sh && ./setup.sh", PROGRAM_DIR);
+        if (system(setup_cmd) != 0) {
+            printf("No setup script found or failed to execute\n");
+        }
         printf("Flow Desktop programs setup complete!\n");
     } else {
         printf("Flow Desktop programs already installed.\n");
     }
 }
 
-void create_editor_tab(const char *title) {
-    GtkWidget *scrolled_win = gtk_scrolled_window_new(NULL, NULL);
-    GtkWidget *source_view = gtk_source_view_new();
-    
-    GtkSourceBuffer *source_buffer = gtk_source_buffer_new(NULL);
-    gtk_text_view_set_buffer(GTK_TEXT_VIEW(source_view), GTK_TEXT_BUFFER(source_buffer));
-    
-    gtk_container_add(GTK_CONTAINER(scrolled_win), source_view);
-    
-    GtkWidget *tab_label = gtk_label_new(title);
-    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), scrolled_win, tab_label);
-    gtk_widget_show_all(scrolled_win);
+static void setup_terminal(GtkWidget *notebook) {
+    GtkWidget *terminal = vte_terminal_new();
+    vte_terminal_spawn_async(VTE_TERMINAL(terminal), VTE_PTY_DEFAULT, NULL,
+                             (char *[]){"/bin/bash", NULL}, NULL, G_SPAWN_DEFAULT,
+                             NULL, NULL, NULL, -1, NULL, NULL, NULL);
+    GtkWidget *scrolled = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled), terminal);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), scrolled, gtk_label_new("Terminal"));
 }
 
-void setup_terminal() {
-    terminal = vte_terminal_new();
-    vte_terminal_spawn_async(VTE_TERMINAL(terminal), VTE_PTY_DEFAULT, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL);
-    GtkWidget *scrolled_term = gtk_scrolled_window_new(NULL, NULL);
-    gtk_container_add(GTK_CONTAINER(scrolled_term), terminal);
-    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), scrolled_term, gtk_label_new("Terminal"));
-    gtk_widget_show_all(scrolled_term);
+static void create_editor_tab(GtkWidget *notebook, const char *title) {
+    GtkWidget *scrolled = gtk_scrolled_window_new();
+    GtkWidget *view = gtk_source_view_new();
+    GtkSourceBuffer *buffer = gtk_source_buffer_new(NULL);
+    gtk_text_view_set_buffer(GTK_TEXT_VIEW(view), GTK_TEXT_BUFFER(buffer));
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled), view);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), scrolled, gtk_label_new(title));
 }
 
-void setup_ui(GtkWidget *window) {
-    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-    notebook = gtk_notebook_new();
-    gtk_box_pack_start(GTK_BOX(vbox), notebook, TRUE, TRUE, 0);
+static void activate(GtkApplication *app, gpointer user_data) {
+    GtkWidget *window = gtk_application_window_new(app);
+    gtk_window_set_title(GTK_WINDOW(window), "Flow Builder");
+    gtk_window_set_default_size(GTK_WINDOW(window), 800, 600);
 
-    setup_terminal();
-    create_editor_tab("New File");
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *notebook = gtk_notebook_new();
+    gtk_box_append(GTK_BOX(box), notebook);
 
-    gtk_container_add(GTK_CONTAINER(window), vbox);
-    gtk_widget_show_all(window);
+    create_editor_tab(notebook, "New File");
+    setup_terminal(notebook);
+
+    gtk_window_set_child(GTK_WINDOW(window), box);
+    gtk_window_present(GTK_WINDOW(window));
 }
 
 int main(int argc, char *argv[]) {
-    gtk_init(&argc, &argv);
-    
-    window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(window), "Flow Builder");
-    gtk_window_set_default_size(GTK_WINDOW(window), 800, 600);
-    
-    g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
-
-    setup_flow_desktop();  // Automatically download & setup Flow Desktop programs
-    setup_ui(window);
-
-    gtk_main();
-    return 0;
+    GtkApplication *app = gtk_application_new("org.flow.builder", G_APPLICATION_DEFAULT_FLAGS);
+    if (!gtk_init_check()) {
+        fprintf(stderr, "Failed to initialize GTK\n");
+        return 1;
+    }
+    setup_flow_desktop();
+    g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
+    int status = g_application_run(G_APPLICATION(app), argc, argv);
+    g_object_unref(app);
+    return status;
 }
