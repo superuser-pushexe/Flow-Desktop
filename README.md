@@ -29,7 +29,8 @@
 - **Wayland-Ready (Partial)** 🌍
   - GTK4 components (Settings and Builder) support Wayland natively.
   - Taskbar is X11-based but can be extended for Wayland with `libwayland-client`.
-
+- **Lightning-Fast performence**
+  -Designed to be free of bloat and fast
 ---
 
 ## 📋 Requirements
