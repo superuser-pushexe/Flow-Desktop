@@ -1,164 +1,159 @@
 # Flow Desktop 🚀
 
-**Flow Desktop** is a sleek, lightweight desktop environment for modern Linux systems, built with X11 (via XCB) and GTK4. It integrates seamlessly with the Openbox window manager, offering a minimal yet powerful interface with a customizable taskbar, application launchers, system clock, settings UI, and a code editor for developers. Designed for efficiency, Flow Desktop combines simplicity with modern features, making it ideal for low-resource systems or users who love a clean desktop experience. 🌟
+**Flow Desktop** is a sleek, modern, and ultra-lightweight desktop environment for Linux systems. Built in modern C++ using XCB and GSettings, Flow Desktop offers a minimalist yet powerful interface ideal for low-resource systems or users who crave efficiency and customization.
 
----
+- - -
 
 ## ✨ Features
 
-- **Customizable Taskbar** 📏
-  - Adjustable size and position, built with XCB for smooth X11 integration.
-  - Override-redirect support ensures compatibility with various window managers.
-- **Application Menu** 📂
-  - Dynamically loads `.desktop` files from `XDG_DATA_DIRS` for easy app launching.
-  - Supports modern desktop standards with `GDesktopAppInfo`.
-- **System Clock** ⏰
-  - Real-time clock display with efficient updates.
-- **Settings UI** ⚙️
-  - GTK4-based interface for managing wallpapers and viewing system info.
-  - File chooser for selecting wallpapers, integrated with `GSettings`.
-- **Flow Builder** 💻
-  - A GTK4-based IDE with a source code editor (`GtkSourceView5`) and terminal (`VTE`).
-  - Automatically sets up Flow Desktop programs via Git cloning with `libgit2`.
-- **Volume Controls** 🔊
-  - Keyboard shortcuts for volume adjustment and muting (PulseAudio-compatible).
-- **Modern and Secure** 🔒
-  - Uses XCB instead of Xlib for better performance and maintainability.
-  - Safe `.desktop` parsing and command execution with GIO.
-  - Robust error handling for X11 and GTK operations.
-- **Wayland-Ready (Partial)** 🌍
-  - GTK4 components (Settings and Builder) support Wayland natively.
-  - Taskbar is X11-based but can be extended for Wayland with `libwayland-client`.
-- **Lightning-Fast performence**
-  -Designed to be free of bloat and fast
----
+*   **Modern Taskbar** 📏
+    *   Customizable and efficient taskbar built with XCB.
+    *   Multiple clickable buttons: **Apps**, **Terminal**, **Settings**, **Volume**, **Theme**, **About**, and **Logout**.
+    *   Smooth integration with any lightweight window manager.
+*   **Dynamic Application Menu** 📂
+    *   Scans your `XDG_DATA_DIRS` for available `.desktop` files.
+    *   Displays and launches applications via GDesktopAppInfo based on your click.
+*   **Real-Time System Clock** ⏰
+    *   Continuously updated clock with a modern design.
+*   **Configuration File Support** ⚙️
+    *   Customize your desktop with a simple configuration file (`~/.config/mydesktop.conf`):
+    
+    *   Set your preferred wallpaper.
+    *   Choose your theme color.
+    
+*   **Volume Controls** 🔊
+    *   Adjust system volume using keyboard shortcuts and an on-screen volume indicator.
+    *   Integrated PulseAudio commands ensure smooth audio management.
+*   **Theming and About Info** 🎨
+    *   Toggle the desktop’s theme color on the fly.
+    *   Open an "About" window for version and credits information.
+*   **Lightweight & Extensible** ✨
+    *   Written in C++ with modern practices and STL for easy maintenance and extension.
+    *   Designed without unnecessary bloat, perfect for minimalist setups.
+
+- - -
 
 ## 📋 Requirements
 
-To run Flow Desktop, ensure you have the following installed:
+To run Flow Desktop, make sure you have the following installed:
 
-- **X11 Development Libraries** (e.g., `libxcb1-dev`)
-- **GTK4** (e.g., `libgtk-4-dev`)
-- **GIO** (e.g., `libgio2.0-dev`) for `.desktop` file handling and settings
-- **GtkSourceView5** (e.g., `libgtksourceview-5-dev`) for the code editor
-- **VTE** (e.g., `libvte-2.91-dev`) for the terminal
-- **libgit2** (e.g., `libgit2-dev`) for repository cloning
-- **Openbox** window manager (recommended)
-- **Meson** and **Ninja** for building
-- **GCC** or another C compiler
-- Optional: `pulseaudio-utils` for volume controls
+*   **X11 Development Libraries** (e.g., `libxcb1-dev`)
+*   **GIO Development Libraries** (for GSettings and desktop file handling, e.g., `libgio2.0-dev`)
+*   **C++17** (or later) compatible compiler (e.g., `g++`)
+*   **Meson** and **Ninja** for building
+*   **Openbox** or another lightweight window manager (recommended)
+*   **PulseAudio Utilities** for volume control (optional)
 
-On Debian/Ubuntu, install dependencies with:
-```bash
+On Debian/Ubuntu, you can install dependencies with:
+
+```
 sudo apt update
-sudo apt install build-essential meson ninja-build libxcb1-dev libgtk-4-dev libgio2.0-dev libgtksourceview-5-dev libvte-2.91-dev libgit2-dev openbox pulseaudio-utils
+sudo apt install build-essential meson ninja-build libxcb1-dev libgio2.0-dev openbox pulseaudio-utils g++
 ```
 
----
+- - -
 
 ## 🛠️ Installation
 
 ### Building from Source
 
-1. **Clone the Repository** 📥
-   ```bash
-   git clone https://github.com/superuser-pushexe/Flow-Desktop.git
-   cd Flow-Desktop
-   ```
+1.  **Clone the Repository** 📥
+    
+    ```
+    git clone https://github.com/superuser-pushexe/Flow-Desktop.git
+    cd Flow-Desktop
+    ```
+    
+2.  **Set Up the Build Environment** 🛠️
+    
+    ```
+    mkdir build && cd build
+    meson setup ..
+    ```
+    
+3.  **Compile the Source Code** 🔨
+    
+    ```
+    ninja
+    ```
+    
+4.  **Launch Flow Desktop** 🚀  
+    Start the desktop environment (ensure your window manager is running):
+    
+    ```
+    ./flow
+    ```
+    
 
-2. **Set Up the Build** 🛠️
-   ```bash
-   mkdir build && cd build
-   meson setup ..
-   ```
-
-3. **Compile the Source Code** 🔨
-   ```bash
-   ninja
-   ```
-
-4. **Run Flow Desktop Components** 🚀
-   - Start the desktop environment:
-     ```bash
-     ./flow
-     ```
-   - Open the settings UI:
-     ```bash
-     ./flow-settings
-     ```
-   - Launch the code editor:
-     ```bash
-     ./flow-builder
-     ```
-
-   **Note**: Ensure Openbox or another window manager is running before starting `flow`.
-
----
+- - -
 
 ## ⚙️ Configuration
 
-Customize Flow Desktop by editing the source files and recompiling:
+Flow Desktop can be customized via a simple configuration file:
 
-- **Taskbar** (`flow.c`): Adjust `WIDTH_RATIO`, `HEIGHT`, and button positions.
-- **Application Menu** (`flow.c`): Modify the `show_app_menu` function to filter or style apps.
-- **Settings** (`flow-settings.c`): Add new tabs or settings to the GTK4 notebook.
-- **Builder** (`flow-builder.c`): Customize the editor or terminal behavior.
+*   **File:** `~/.config/mydesktop.conf`
+*   **Example Content:**
+    
+    ```
+    wallpaper=/path/to/your/wallpaper.jpg
+    themeColor=0x444444
+    ```
+    
 
-After changes, recompile:
-```bash
-cd build
-ninja
-```
+Feel free to modify the source code as needed and recompile to adjust the taskbar layout, app menu behavior, or other UI elements.
 
----
+- - -
 
 ## 🎮 Usage
 
-1. **Taskbar** 🖱️
-   - Launch applications via the "Apps" button, which displays a menu of `.desktop` files.
-   - Use the "Notify" or "Volume" buttons to open the volume control window.
-   - Click "Logout" to exit Flow Desktop.
-   - Press `Super` (Windows key) to open the application menu.
-   - Use multimedia keys for volume control (requires PulseAudio).
+*   **Taskbar Controls:**
+    *   **Apps:** Opens the application menu listing all installed `.desktop` entries.
+    *   **Terminal:** Launches the default terminal emulator (currently `xterm`).
+    *   **Settings:** Opens a basic settings window (stub for future expansion).
+    *   **Volume:** Displays the volume control window; use volume keys for adjustments.
+    *   **Theme:** Toggles the desktop theme color to refresh the look and feel.
+    *   **About:** Displays version and about information regarding Flow Desktop.
+    *   **Logout:** Exits Flow Desktop.
+*   **Keyboard Shortcuts:**
+    *   Press the **Super/Windows key** to open the application menu.
+    *   Use keys for volume control (compatible with PulseAudio).
 
-2. **Settings UI** 🛠️
-   - Open `flow-settings` to change wallpapers or view system info (memory usage).
-   - Select wallpapers via a modern file chooser.
+Flow Desktop is designed to be intuitive and responsive, making it an excellent choice for both everyday use and development environments.
 
-3. **Flow Builder** 💻
-   - Open `flow-builder` to edit code or run commands in a terminal.
-   - Automatically downloads Flow Desktop programs on first run.
-
-The taskbar, settings, and builder are designed to be lightweight and intuitive, perfect for developers and minimalists alike! 🌈
-
----
+- - -
 
 ## 🤝 Contributing
 
-We love contributions! Whether it's fixing bugs 🐛, adding features ✨, or improving documentation 📚, your help makes Flow Desktop better. To contribute:
+Contributions are welcome! Whether you’re fixing bugs, adding new features, or enhancing the documentation:
 
-1. Fork the repository on [GitHub](https://github.com/superuser-pushexe/Flow-Desktop).
-2. Create a branch for your changes:
-   ```bash
-   git checkout -b my-feature
-   ```
-3. Commit your changes and push:
-   ```bash
-   git commit -m "Add cool feature"
-   git push origin my-feature
-   ```
-4. Open a pull request with a clear description.
+1.  Fork the repository on [GitHub](https://github.com/superuser-pushexe/Flow-Desktop).
+2.  Create a new branch for your feature:
+    
+    ```
+    git checkout -b my-feature
+    ```
+    
+3.  Commit your changes and push them:
+    
+    ```
+    git commit -m "Add new feature"
+    git push origin my-feature
+    ```
+    
+4.  Open a pull request with a clear description of your changes.
 
-Please follow the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
+Please follow the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md) for a welcoming environment.
 
----
+- - -
 
 ## 📜 License
 
-Flow Desktop is licensed under the [GNU General Public License v3.0](LICENSE). See the [LICENSE](LICENSE) file for details.
+Flow Desktop is released under the [GNU General Public License v3.0](LICENSE). See the LICENSE file for details.
 
----
+- - -
 
 ## 🌐 More Information
 
-Visit the [Flow Desktop GitHub repository](https://github.com/superuser-pushexe/Flow-Desktop) for updates, issues, and community discussions. Let’s build a lightweight desktop that flows! 🌊
+Visit the [Flow Desktop GitHub repository](https://github.com/superuser-pushexe/Flow-Desktop) for updates, issue tracking, and community discussions. Let’s build a desktop environment that flows—efficient, modern, and fully customizable!
+
+Enjoy Flow Desktop, and happy coding!
